@@ -1,0 +1,33 @@
+{
+  // Visit https://aka.ms/tsconfig to read more about this file
+  "compilerOptions": {
+    // File Layout
+    "rootDir": "./src",                        // Descomentado para que busque tu index.ts
+    "outDir": "./dist",                        // Descomentado para que guarde ahí el JS resultante
+
+    // Environment Settings
+    "module": "nodenext",
+    "target": "esnext",
+    "lib": ["esnext"],                         // Descomentado para soporte moderno de JS
+    "types": ["node"],                         // Añadido "node" aquí para que reconozca Express y NodeJS
+    "esModuleInterop": true,                   // ¡AÑADIDO! Crucial para que los imports de Express funcionen sin fallos
+
+    // Other Outputs
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    // Stricter Typechecking Options
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+
+    // Recommended Options
+    "strict": true,
+    "jsx": "react-jsx",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true
+  }
+}

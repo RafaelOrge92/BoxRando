@@ -1,0 +1,13 @@
+# Ignorar dependencias de Node
+**/node_modules/
+dist/
+.vite/
+
+# Archivos del sistema y logs
+.DS_Store
+Thumbs.db
+*.log
+
+# Variables de entorno/secretos
+.env
+.env.local
