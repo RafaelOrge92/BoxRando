@@ -184,3 +184,37 @@
     border-right-color: var(--border);
   }
 }
+
+/* CRT / Old PC visual styles */
+.crt-screen {
+  background: #000;
+  color: #9ae6b4;
+  -webkit-font-smoothing: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', 'Courier New', monospace;
+}
+.crt-box {
+  box-shadow: inset 0 0 40px rgba(0, 255, 140, 0.03), 0 0 12px rgba(0,0,0,0.6);
+  border-radius: 10px;
+}
+.crt-grid {
+  background: linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.85));
+}
+.crt-title {
+  text-shadow: 0 0 8px rgba(0,255,140,0.12), 0 0 24px rgba(0,255,140,0.06);
+  color: #bfffcf;
+}
+.crt-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(0,0,0,0) 50%, rgba(0,0,0,0.06) 50%);
+  background-size: 100% 4px; /* scanlines */
+}
+.crt-grid button {
+  box-shadow: 0 0 8px rgba(0,255,140,0.03), inset 0 -2px 0 rgba(0,0,0,0.2);
+}
+.crt-grid .animate-pulse {
+  box-shadow: 0 0 12px rgba(16,185,129,0.6), 0 0 24px rgba(16,185,129,0.25);
+}
+
