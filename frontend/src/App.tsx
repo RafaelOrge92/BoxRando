@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
+import { BiSolidLeftArrow, BiSolidRightArrow } from 'react-icons/bi';
 import './App.css';
 
 interface SelectedPosition {
   box: number;
   row: number;
   col: number;
+  tab?: 'normal' | 'special';
 }
 
 export default function App() {
@@ -24,8 +26,52 @@ export default function App() {
   const [result, setResult] = useState<SelectedPosition | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Animation & Audio State
+  const [isRolling, setIsRolling] = useState<boolean>(false);
+  const [animatingPosition, setAnimatingPosition] = useState<SelectedPosition | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const intervalRef = useRef<number | null>(null);
+  const timeoutRefs = useRef<number[]>([]);
+
+  // Cajas Especiales state
+  const [activeTab, setActiveTab] = useState<'normal' | 'special'>('normal');
+  const [totalSpecialBoxes, setTotalSpecialBoxes] = useState<number>(1);
+  const [specialBoxNames, setSpecialBoxNames] = useState<Record<number, string>>({});
+
   const ROWS = 5;
   const COLS = 6;
+
+  // Save special boxes count and names to localStorage when they change
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem(`totalSpecialBoxes_${user.id}`, totalSpecialBoxes.toString());
+    }
+  }, [totalSpecialBoxes, user]);
+
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem(`specialBoxNames_${user.id}`, JSON.stringify(specialBoxNames));
+    }
+  }, [specialBoxNames, user]);
+
+  // Load special boxes count and names when user logs in
+  useEffect(() => {
+    if (user) {
+      try {
+        const savedCount = localStorage.getItem(`totalSpecialBoxes_${user.id}`);
+        setTotalSpecialBoxes(savedCount ? parseInt(savedCount) || 1 : 1);
+
+        const savedNames = localStorage.getItem(`specialBoxNames_${user.id}`);
+        setSpecialBoxNames(savedNames ? JSON.parse(savedNames) : {});
+      } catch (err) {
+        console.warn('Error al cargar datos locales:', err);
+      }
+    } else {
+      setTotalSpecialBoxes(1);
+      setSpecialBoxNames({});
+      setActiveTab('normal');
+    }
+  }, [user]);
 
   // Listen to Auth changes and load data accordingly
   useEffect(() => {
@@ -67,10 +113,28 @@ export default function App() {
         setTotalBoxes(1);
         setCurrentBoxView(1);
         setAuthLoading(false);
+        setTotalSpecialBoxes(1);
+        setSpecialBoxNames({});
+        setActiveTab('normal');
       }
     });
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  // Audio & Animation cleanup
+  useEffect(() => {
+    // We create the audio element here. The user can just drop 'ruleta.mp3' in the public folder.
+    audioRef.current = new Audio('/ruleta.mp3');
+    
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      timeoutRefs.current.forEach(t => clearTimeout(t));
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    };
   }, []);
 
   // Fetch settings (total_boxes) and blocked positions from Supabase
@@ -114,8 +178,18 @@ export default function App() {
   const toggleBlockPosition = async (row: number, col: number) => {
     if (!user) return;
     setError(null);
-    const id = `${currentBoxView}-${row}-${col}`;
+    const dbBox = activeTab === 'special' ? currentBoxView + 1000 : currentBoxView;
+    const id = `${dbBox}-${row}-${col}`;
+
+    // Check current state
     const isBlocked = blockedPositions.includes(id);
+
+    // Optimistic UI Update: update state before awaiting network
+    if (isBlocked) {
+      setBlockedPositions(prev => prev.filter(p => p !== id));
+    } else {
+      setBlockedPositions(prev => [...prev, id]);
+    }
 
     try {
       if (isBlocked) {
@@ -123,26 +197,36 @@ export default function App() {
           .from('blocked_positions')
           .delete()
           .eq('user_id', user.id)
-          .eq('box', currentBoxView)
+          .eq('box', dbBox)
           .eq('row', row)
           .eq('col', col);
 
         if (deleteErr) throw deleteErr;
-        setBlockedPositions(blockedPositions.filter((p) => p !== id));
       } else {
         const { error: insertErr } = await supabase
           .from('blocked_positions')
           .insert({
             user_id: user.id,
-            box: currentBoxView,
+            box: dbBox,
             row: row,
             col: col
           });
 
-        if (insertErr) throw insertErr;
-        setBlockedPositions([...blockedPositions, id]);
+        if (insertErr) {
+          // If the error is a duplicate key violation, the database is already in the desired state.
+          // Postgres error code 23505 = unique_violation
+          if (insertErr.code !== '23505') {
+            throw insertErr;
+          }
+        }
       }
     } catch (err: any) {
+      // Revert optimistic update on failure
+      if (isBlocked) {
+        setBlockedPositions(prev => [...prev, id]);
+      } else {
+        setBlockedPositions(prev => prev.filter(p => p !== id));
+      }
       setError('Error al sincronizar bloqueo: ' + err.message);
     }
   };
@@ -165,33 +249,227 @@ export default function App() {
     }
   };
 
-  // Perform secure roll on the database side (RPC call)
-  const handleRoll = async () => {
+  const handleTotalSpecialBoxesChange = (val: number) => {
+    setTotalSpecialBoxes(val);
+    if (currentBoxView > val) setCurrentBoxView(val);
+  };
+
+  const handleSpecialBoxNameChange = (boxNum: number, name: string) => {
+    setSpecialBoxNames(prev => ({
+      ...prev,
+      [boxNum]: name
+    }));
+  };
+
+  const handleTabChange = (tab: 'normal' | 'special') => {
+    setActiveTab(tab);
+    setCurrentBoxView(1);
+    setResult(null);
     setError(null);
-    try {
-      const { data, error: rpcErr } = await supabase.rpc('roll_position', {
-        total_boxes: totalBoxes
-      });
+  };
 
-      if (rpcErr) {
-        throw new Error(rpcErr.message || 'Error al generar la tirada');
-      }
+  const handleRoll = async () => {
+    if (isRolling) return;
+    setError(null);
+    setIsRolling(true);
 
-      if (data && data.length > 0) {
-        const rollResult = data[0]; // Returns { out_box, out_row, out_col, out_pos_id }
-        setResult({
-          box: rollResult.out_box,
-          row: rollResult.out_row,
-          col: rollResult.out_col
-        });
-        setCurrentBoxView(rollResult.out_box);
-      } else {
-        throw new Error('No se pudo generar la tirada desde el servidor');
-      }
-    } catch (err: any) {
-      setError(err.message);
-      setResult(null);
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(e => console.warn('Audio play failed:', e));
     }
+
+    let finalResult: SelectedPosition | null = null;
+    let finalError: string | null = null;
+    let prevIdToBlock: string | null = null;
+
+    // 1. PRE-CALCULATE RESULT AT 0s
+    // Find previous result for auto-block to exclude from available cells right now
+    if (result && result.tab === activeTab && user) {
+      const prevDbBox = activeTab === 'special' ? result.box + 1000 : result.box;
+      prevIdToBlock = `${prevDbBox}-${result.row}-${result.col}`;
+      
+      // Fire and forget insert at 0s so DB/RPC knows it's blocked!
+      // But don't update local blockedPositions state yet to preserve visual timing.
+      if (!blockedPositions.includes(prevIdToBlock)) {
+        const insertPromise = supabase
+          .from('blocked_positions')
+          .insert({
+            user_id: user.id,
+            box: prevDbBox,
+            row: result.row,
+            col: result.col
+          });
+          
+        if (activeTab === 'normal') {
+          // Wait for DB insertion in normal mode so the RPC logic respects the new block
+          try {
+            await insertPromise;
+          } catch (e) {
+            console.warn('Error auto-blocking previous roll at 0s:', e);
+          }
+        } else {
+          // In special mode, we handle exclusion locally so we don't strictly need to await
+          insertPromise.then(({ error }) => {
+            if (error && error.code !== '23505') console.warn('Error auto-blocking previous roll at 0s:', error.message);
+          });
+        }
+      }
+    }
+
+    if (activeTab === 'special') {
+      try {
+        const dbBox = currentBoxView + 1000;
+        
+        const availableCells: { row: number; col: number }[] = [];
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            const id = `${dbBox}-${r}-${c}`;
+            if (!blockedPositions.includes(id) && id !== prevIdToBlock) {
+              availableCells.push({ row: r, col: c });
+            }
+          }
+        }
+
+        if (availableCells.length === 0) {
+          throw new Error('No quedan posiciones disponibles en esta caja especial. ¡Desbloquea alguna!');
+        }
+
+        const randomIndex = Math.floor(Math.random() * availableCells.length);
+        const chosen = availableCells[randomIndex];
+
+        finalResult = {
+          box: currentBoxView,
+          row: chosen.row,
+          col: chosen.col,
+          tab: 'special'
+        };
+
+        // Register the result in Supabase immediately so it's safe
+        if (user) {
+          supabase
+            .from('roll_results')
+            .insert({
+              user_id: user.id,
+              box: dbBox,
+              row: chosen.row,
+              col: chosen.col
+            })
+            .then(({ error: insertErr }) => {
+              if (insertErr) console.warn('Error al guardar historial de tirada especial:', insertErr.message);
+            });
+        }
+      } catch (err: any) {
+        finalError = err.message;
+      }
+    } else {
+      try {
+        const { data, error: rpcErr } = await supabase.rpc('roll_position', {
+          total_boxes: totalBoxes
+        });
+
+        if (rpcErr) {
+          throw new Error(rpcErr.message || 'Error al generar la tirada');
+        }
+
+        if (data && data.length > 0) {
+          const rollResult = data[0]; // Returns { out_box, out_row, out_col, out_pos_id }
+          finalResult = {
+            box: rollResult.out_box,
+            row: rollResult.out_row,
+            col: rollResult.out_col,
+            tab: 'normal'
+          };
+        } else {
+          throw new Error('No se pudo generar la tirada desde el servidor');
+        }
+      } catch (err: any) {
+        finalError = err.message;
+      }
+    }
+
+    if (finalError) {
+      setError(finalError);
+      setIsRolling(false);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      return;
+    }
+
+    // 2. START ANIMATION
+    // Helper to get cells dynamically, avoiding the previous blocked cell
+    const getAvailableVisualCells = (boxNum: number) => {
+      const dbBox = activeTab === 'special' ? boxNum + 1000 : boxNum;
+      const cells: { row: number; col: number }[] = [];
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const id = `${dbBox}-${r}-${c}`;
+          if (!blockedPositions.includes(id) && id !== prevIdToBlock) {
+            cells.push({ row: r, col: c });
+          }
+        }
+      }
+      return cells.length > 0 ? cells : [{ row: 0, col: 0 }]; // fallback
+    };
+
+    intervalRef.current = setInterval(() => {
+      let boxToAnimate = currentBoxView;
+      
+      // Multicaja effect for normal rolls
+      if (activeTab === 'normal' && totalBoxes > 1) {
+        // We use functional state update for currentBoxView or just pick a random box
+        boxToAnimate = Math.floor(Math.random() * totalBoxes) + 1;
+        setCurrentBoxView(boxToAnimate);
+      }
+
+      const cells = getAvailableVisualCells(boxToAnimate);
+      const randCell = cells[Math.floor(Math.random() * cells.length)];
+      setAnimatingPosition({
+        box: boxToAnimate,
+        row: randCell.row,
+        col: randCell.col,
+        tab: activeTab
+      });
+    }, 100);
+
+    // 3. AT 4000ms: REVEAL RESULT & APPLY AUTO-BLOCK
+    const timeout4s = setTimeout(() => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      setAnimatingPosition(null);
+      setResult(finalResult);
+      
+      // Jump to the winner box view
+      if (finalResult) {
+        setCurrentBoxView(finalResult.box);
+      }
+
+      // Apply the auto-block visually at this exact moment for BOTH modes
+      if (prevIdToBlock && user) {
+        if (!blockedPositions.includes(prevIdToBlock)) {
+          // Optimistic update
+          setBlockedPositions(prev => [...prev, prevIdToBlock!]);
+        }
+      }
+    }, 4000);
+    timeoutRefs.current.push(timeout4s);
+
+    // 4. AT 6000ms: FINISH ROLL
+    const timeout6s = setTimeout(() => {
+      setIsRolling(false);
+    }, 6000);
+    timeoutRefs.current.push(timeout6s);
+  };
+
+  // Switch Box views with L and R wrap around functions
+  const handlePrevBox = () => {
+    const total = activeTab === 'special' ? totalSpecialBoxes : totalBoxes;
+    setCurrentBoxView(prev => (prev > 1 ? prev - 1 : total));
+  };
+
+  const handleNextBox = () => {
+    const total = activeTab === 'special' ? totalSpecialBoxes : totalBoxes;
+    setCurrentBoxView(prev => (prev < total ? prev + 1 : 1));
   };
 
   // Authentication submission
@@ -282,10 +560,10 @@ export default function App() {
             validatedIds.push(`${item.box}-${item.row}-${item.col}`);
           }
 
-          if (user) {
+          if (validatedBlocks.length > 0 && user) {
             const { error: upsertErr } = await supabase
               .from('blocked_positions')
-              .upsert(validatedBlocks, { onConflict: 'user_id,box,row,col' });
+              .upsert(validatedBlocks, { onConflict: 'user_id,box,row,col', ignoreDuplicates: true });
 
             if (upsertErr) throw upsertErr;
           }
@@ -297,76 +575,80 @@ export default function App() {
           setTimeout(() => setSuccessMsg(null), 3000);
         } catch (err: any) {
           setError('Error al importar JSON: ' + err.message);
+        } finally {
+          e.target.value = '';
         }
       };
     }
   };
 
-  // Auth loading spinner UI
+  // Auth loading spinner UI (Modern SV styling)
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-black text-emerald-300 flex flex-col items-center justify-center font-mono relative crt-screen" style={{ background: '#000' }}>
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundImage: 'repeating-linear-gradient(rgba(0,0,0,0) 0 3px, rgba(0,0,0,0.08) 3px 4px), radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,0.6) 100%)', mixBlendMode: 'overlay' }} />
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-400 mx-auto mb-4"></div>
-          <p className="text-emerald-400 text-xl tracking-widest uppercase animate-pulse">Cargando sistema...</p>
+      <div className="sv-screen flex flex-col items-center justify-center p-6 text-white">
+        <div className="sv-aura" />
+        <div className="text-center z-10">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-white font-semibold text-lg uppercase tracking-widest animate-pulse">Cargando Cajas de Pokémon...</p>
         </div>
       </div>
     );
   }
 
-  // Not authenticated UI (CRT terminal login)
+  // Not authenticated UI (Pokémon SV login screen design)
   if (!user) {
     return (
-      <div className="min-h-screen bg-black text-emerald-300 flex flex-col items-center justify-center p-6 font-mono relative crt-screen" style={{ background: '#000' }}>
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundImage: 'repeating-linear-gradient(rgba(0,0,0,0) 0 3px, rgba(0,0,0,0.08) 3px 4px), radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,0.6) 100%)', mixBlendMode: 'overlay' }} />
+      <div className="sv-screen flex flex-col items-center justify-center p-6 text-white">
+        <div className="sv-aura" />
 
-        <header className="mb-8 text-center max-w-lg">
-          <h1 className="text-4xl font-extrabold tracking-wide uppercase crt-title" style={{ color: '#bfffcf', textShadow: '0 0 8px rgba(0,255,140,0.12), 0 0 24px rgba(0,255,140,0.06)' }}>
+        <header className="mb-8 text-center max-w-lg z-10">
+          <h1 className="text-4xl font-extrabold tracking-wide uppercase text-white drop-shadow-lg">
             Pokémon Box Randomizer
           </h1>
-          <p className="text-emerald-400 mt-2 text-sm uppercase tracking-wider">Acceso Requerido - Base de Datos en la Nube</p>
+          <p className="text-violet-200 mt-2 text-xs font-bold uppercase tracking-widest">
+            Sistema de Cajas Cloud
+          </p>
         </header>
 
-        <div className="w-full max-w-md bg-zinc-950 p-8 rounded-2xl border-2 border-emerald-500/20 crt-box shadow-2xl relative">
-          <h2 className="text-2xl font-bold mb-6 text-emerald-400 text-center uppercase tracking-wider">
-            {isSignUp ? 'Registrar Usuario' : 'Iniciar Sesión'}
+        <div className="w-full max-w-md sv-panel p-8 z-10 border border-white/10 shadow-2xl relative">
+          <h2 className="text-2xl font-bold mb-6 text-center uppercase tracking-wider text-white">
+            {isSignUp ? 'Crear Entrenador ID' : 'Iniciar Sesión'}
           </h2>
 
           <form onSubmit={handleAuth} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-emerald-500 uppercase tracking-widest">Correo Electrónico:</label>
+              <label className="text-xs font-semibold text-violet-200 uppercase tracking-widest">Correo Electrónico:</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="bg-zinc-900 border border-emerald-500/30 rounded-lg px-3 py-2.5 text-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 font-mono text-sm placeholder-emerald-800"
+                className="bg-zinc-900/40 border border-white/10 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-violet-400 font-sans text-sm placeholder-violet-300/30"
                 placeholder="entrenador@pallet.com"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-emerald-500 uppercase tracking-widest">Contraseña:</label>
+              <label className="text-xs font-semibold text-violet-200 uppercase tracking-widest">Contraseña:</label>
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="bg-zinc-900 border border-emerald-500/30 rounded-lg px-3 py-2.5 text-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 font-mono text-sm placeholder-emerald-800"
+                className="bg-zinc-900/40 border border-white/10 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-violet-400 font-sans text-sm placeholder-violet-300/30"
                 placeholder="********"
               />
             </div>
 
             <button
               type="submit"
-              className="mt-4 w-full cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-black font-black py-3 px-6 rounded-xl transition duration-200 uppercase tracking-widest text-sm shadow-lg shadow-emerald-500/20 active:scale-98"
+              className="mt-4 w-full cursor-pointer sv-btn sv-btn-action font-black py-3 px-6 rounded-xl transition duration-200 uppercase tracking-widest text-sm active:scale-98"
             >
               {isSignUp ? 'Registrar' : 'Acceder'}
             </button>
           </form>
 
-          <div className="mt-6 text-center border-t border-emerald-500/10 pt-4">
+          <div className="mt-6 text-center border-t border-white/10 pt-4">
             <button
               type="button"
               onClick={() => {
@@ -374,20 +656,20 @@ export default function App() {
                 setError(null);
                 setSuccessMsg(null);
               }}
-              className="text-xs text-emerald-500 hover:underline hover:text-emerald-300 font-bold uppercase tracking-wider cursor-pointer"
+              className="text-xs text-violet-200 hover:underline hover:text-white font-bold uppercase tracking-wider cursor-pointer"
             >
               {isSignUp ? '¿Ya tienes una cuenta? Inicia sesión' : '¿No tienes cuenta? Regístrate'}
             </button>
           </div>
 
           {error && (
-            <div className="mt-4 p-3 bg-rose-950/40 border border-rose-500/30 rounded-lg text-center text-rose-400 font-medium text-xs font-mono">
+            <div className="mt-4 p-3 bg-red-900/40 border border-red-500/30 rounded-lg text-center text-red-200 font-medium text-xs font-sans">
               ⚠️ ERROR: {error}
             </div>
           )}
 
           {successMsg && (
-            <div className="mt-4 p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-lg text-center text-emerald-400 font-medium text-xs font-mono">
+            <div className="mt-4 p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-lg text-center text-emerald-200 font-medium text-xs font-sans">
               ✔️ {successMsg}
             </div>
           )}
@@ -396,131 +678,198 @@ export default function App() {
     );
   }
 
-  // Logged in main dashboard UI
+  // Logged in main dashboard UI (Pokémon Scarlet/Violet boxes layout emulation)
   return (
-    <div className="min-h-screen bg-black text-emerald-300 flex flex-col items-center p-6 font-mono relative crt-screen" style={{ background: '#000' }}>
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundImage: 'repeating-linear-gradient(rgba(0,0,0,0) 0 3px, rgba(0,0,0,0.08) 3px 4px), radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,0.6) 100%)', mixBlendMode: 'overlay' }} />
+    <div className="sv-screen flex flex-col justify-between min-h-screen">
+      <div className="sv-aura" />
 
-      {/* Top navbar bar */}
-      <div className="w-full max-w-4xl flex justify-between items-center mb-6 text-xs text-emerald-400 font-mono border-b border-emerald-500/20 pb-2 z-10">
-        <span>SESIÓN: <strong className="text-emerald-200">{user.email}</strong></span>
-        <button
-          onClick={() => supabase.auth.signOut()}
-          className="cursor-pointer bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 border border-rose-500/30 px-3 py-1 rounded-md uppercase font-bold tracking-wider transition-colors"
-        >
-          Cerrar Sesión
-        </button>
+      {/* Top Console Tabs Header */}
+      <div className="w-full z-10">
+        <div className="sv-tab-bar">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => handleTabChange('normal')}
+            onKeyDown={(e) => e.key === 'Enter' && handleTabChange('normal')}
+            className={`sv-tab ${activeTab === 'normal' ? 'active' : ''} outline-none select-none`}
+          >
+            Cajas Normales
+          </div>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => handleTabChange('special')}
+            onKeyDown={(e) => e.key === 'Enter' && handleTabChange('special')}
+            className={`sv-tab ${activeTab === 'special' ? 'active' : ''} outline-none select-none`}
+          >
+            Cajas Especiales
+          </div>
+        </div>
       </div>
 
-      <header className="mb-8 text-center z-10">
-        <h1 className="text-5xl font-extrabold tracking-wide uppercase crt-title" style={{ color: '#bfffcf', textShadow: '0 0 8px rgba(0,255,140,0.12), 0 0 24px rgba(0,255,140,0.06)', letterSpacing: '1px' }}>
-          Pokémon Box Randomizer
-        </h1>
-        <p className="text-emerald-400 mt-2">Selecciona tus cajas, bloquea espacios y genera tu tirada segura</p>
-      </header>
+      {/* Main Grid & Setup Panel */}
+      <main className="w-full max-w-6xl mx-auto px-6 py-4 flex-grow grid grid-cols-1 lg:grid-cols-3 gap-6 items-start z-10">
 
-      <main className="w-full max-w-4xl bg-transparent p-6 rounded-2xl shadow-xl border border-emerald-800/20 grid grid-cols-1 md:grid-cols-3 gap-8 crt-box z-10">
-
-        <div className="flex flex-col gap-5">
-          <h2 className="text-xl font-bold border-b border-slate-700 pb-2 text-indigo-400">Configuración</h2>
-
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-300">Número de Cajas Totales:</label>
-            <input
-              type="number"
-              min={1}
-              value={totalBoxes}
-              onChange={(e) => {
-                const val = Math.max(1, parseInt(e.target.value) || 1);
-                handleTotalBoxesChange(val);
-              }}
-              className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+        {/* Left Column: Styled as the SV "Current Party" sidebar slots */}
+        <div className="flex flex-col gap-3">
+          <div className="px-3 py-1 bg-zinc-950/40 border border-white/10 rounded-full text-xs font-bold tracking-widest text-violet-200 flex items-center justify-between">
+            <span>🔴 ENTRENADOR ACTIVO</span>
+            <span className="text-white drop-shadow-sm font-black uppercase text-[10px]">PC SYSTEM v3</span>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-300">Viendo la Caja actualmente:</label>
-            <select
-              value={currentBoxView}
-              onChange={(e) => setCurrentBoxView(parseInt(e.target.value))}
-              className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          {/* Slot 1: Active user session */}
+          <div className="sv-party-slot p-4 flex flex-col gap-2 relative overflow-hidden">
+            <span className="text-[10px] font-black text-violet-300 uppercase tracking-widest block">Usuario Logueado</span>
+            <div className="text-sm font-bold truncate pr-8">{user.email}</div>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="mt-2 text-left self-start text-[10px] font-black uppercase text-red-300 border border-red-500/20 bg-red-950/20 px-2.5 py-1 rounded hover:bg-red-900/30 transition-colors cursor-pointer"
             >
-              {Array.from({ length: totalBoxes }, (_, i) => (
-                <option key={i + 1} value={i + 1}>
-                  Caja {i + 1}
-                </option>
-              ))}
-            </select>
+              Cerrar Sesión
+            </button>
           </div>
 
-          <button
-            onClick={handleRoll}
-            className="w-full cursor-pointer bg-amber-500 hover:bg-amber-600 text-slate-900 font-black py-4 px-6 rounded-xl transition duration-200 uppercase tracking-wide text-lg shadow-lg shadow-amber-500/20 active:scale-98"
-          >
-            🤡 SHOW
-          </button>
-
-          {result && (
-            <div className="mt-4 p-4 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-center">
-              <p className="text-xs text-emerald-400 uppercase font-bold tracking-widest">Resultado</p>
-              <p className="text-2xl font-black text-emerald-400 mt-1">
-                Caja {result.box} ➔ Fila {result.row + 1}, Col {result.col + 1}
-              </p>
+          {/* Slot 2: Config - Number of boxes */}
+          <div className="sv-party-slot p-4 flex flex-col gap-1">
+            <span className="text-[10px] font-black text-violet-300 uppercase tracking-widest block">
+              {activeTab === 'special' ? 'Total Cajas Especiales' : 'Total de Cajas'}
+            </span>
+            <div className="flex items-center gap-3 mt-1">
+              <input
+                type="number"
+                min={1}
+                value={activeTab === 'special' ? totalSpecialBoxes : totalBoxes}
+                onChange={(e) => {
+                  const val = Math.max(1, parseInt(e.target.value) || 1);
+                  if (activeTab === 'special') {
+                    handleTotalSpecialBoxesChange(val);
+                  } else {
+                    handleTotalBoxesChange(val);
+                  }
+                }}
+                className="w-full bg-zinc-950/40 border border-white/10 rounded-lg px-3 py-1.5 text-white focus:outline-none focus:ring-2 focus:ring-violet-400 font-bold"
+              />
             </div>
-          )}
+          </div>
 
+          {/* Slot 3: Result of the Randomizer roll */}
+          <div className="sv-party-slot p-4 flex flex-col gap-1">
+            <span className="text-[10px] font-black text-violet-300 uppercase tracking-widest block font-sans">Selección Segura</span>
+            <button
+              onClick={handleRoll}
+              disabled={isRolling}
+              className={`w-full cursor-pointer sv-btn sv-btn-action font-black py-3 px-4 rounded-xl transition duration-200 uppercase tracking-widest text-sm text-[12px] active:scale-98 mt-1 ${isRolling ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {isRolling ? 'SORTEANDO...' : 'GENERAR TIRADA'}
+            </button>
+
+            {result ? (
+              <div className="mt-3 p-3 bg-emerald-950/30 border border-emerald-500/20 rounded-lg text-center">
+                <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block">Resultado Obtenido</span>
+                <span className="text-base font-black text-emerald-300 mt-1 block">
+                  {result.tab === 'special'
+                    ? `${specialBoxNames[result.box] ?? `Caja Especial ${result.box}`} ➔ F. ${result.row + 1}, C. ${result.col + 1}`
+                    : `Caja ${result.box} ➔ F. ${result.row + 1}, C. ${result.col + 1}`}
+                </span>
+              </div>
+            ) : (
+              <div className="mt-3 p-3 bg-zinc-950/20 border border-dashed border-white/10 rounded-lg text-center text-[10px] text-violet-300 font-medium">
+                Sin tirada activa
+              </div>
+            )}
+          </div>
+
+          {/* Slot 4: Backups & File Uploads (Import/Export) */}
+          <div className="sv-party-slot p-4 flex flex-col gap-3">
+            <span className="text-[10px] font-black text-violet-300 uppercase tracking-widest block">Copias de Seguridad (JSON)</span>
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <button
+                onClick={handleExportJSON}
+                className="w-full cursor-pointer bg-zinc-950/40 hover:bg-zinc-900/40 text-[10px] font-black uppercase text-violet-200 border border-white/10 py-2 rounded-lg transition-colors"
+              >
+                💾 Exportar
+              </button>
+              <label className="w-full cursor-pointer bg-zinc-950/40 hover:bg-zinc-900/40 text-[10px] font-black uppercase text-violet-200 border border-white/10 py-2 rounded-lg transition-colors text-center block">
+                📂 Importar
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleImportJSON}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
+
+
+
+          {/* Notifications and errors */}
           {error && (
-            <div className="mt-4 p-4 bg-rose-950/40 border border-rose-500/30 rounded-xl text-center text-rose-400 font-medium text-sm font-mono">
+            <div className="p-3 bg-red-950/30 border border-red-500/20 rounded-xl text-center text-red-200 font-bold text-xs">
               ⚠️ {error}
             </div>
           )}
 
           {successMsg && (
-            <div className="mt-4 p-4 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-center text-emerald-400 font-medium text-sm font-mono">
+            <div className="p-3 bg-emerald-950/30 border border-emerald-500/20 rounded-xl text-center text-emerald-200 font-bold text-xs">
               ✔️ {successMsg}
             </div>
           )}
-
-          {/* Import/Export Backup Section */}
-          <div className="mt-6 pt-6 border-t border-emerald-500/20 flex flex-col gap-3">
-            <h3 className="text-xs font-bold text-emerald-500 uppercase tracking-widest">Copia de Seguridad</h3>
-
-            <button
-              onClick={handleExportJSON}
-              className="w-full cursor-pointer bg-zinc-900 hover:bg-zinc-850 text-emerald-300 border border-emerald-500/30 font-bold py-2 px-4 rounded-lg text-xs uppercase tracking-wider transition-colors"
-            >
-              💾 Exportar Bloqueos (JSON)
-            </button>
-
-            <label className="w-full cursor-pointer bg-zinc-900 hover:bg-zinc-850 text-emerald-300 border border-emerald-500/30 font-bold py-2 px-4 rounded-lg text-xs uppercase tracking-wider transition-colors text-center block">
-              📂 Importar Bloqueos (JSON)
-              <input
-                type="file"
-                accept=".json"
-                onChange={handleImportJSON}
-                className="hidden"
-              />
-            </label>
-          </div>
         </div>
 
-        <div className="md:col-span-2 flex flex-col items-center justify-center">
-          <div className="mb-4 px-4 py-1.5 rounded-full text-sm font-bold tracking-wide">
-            Caja {currentBoxView}
+        {/* Center / Right Column: Emulates the SV PC Box grid layout */}
+        <div className="lg:col-span-2 sv-panel p-6 flex flex-col gap-4">
+
+          {/* SV Header navigation style for Boxes */}
+          <div className="flex justify-between items-center bg-zinc-950/20 p-2 rounded-xl border border-white/5">
+            <button
+              onClick={handlePrevBox}
+              className="w-14 h-9 sv-btn cursor-pointer rounded-2xl flex items-center justify-center pr-[2px]"
+            >
+              <BiSolidLeftArrow size={20} />
+            </button>
+            <div className="text-lg font-black tracking-wide text-white drop-shadow flex justify-center items-center">
+              {activeTab === 'special' ? (
+                <input
+                  type="text"
+                  value={specialBoxNames[currentBoxView] ?? `Caja Especial ${currentBoxView}`}
+                  onChange={(e) => handleSpecialBoxNameChange(currentBoxView, e.target.value)}
+                  className="sv-special-box-input"
+                  placeholder={`Caja Especial ${currentBoxView}`}
+                />
+              ) : (
+                <span>Caja {currentBoxView}</span>
+              )}
+            </div>
+            <button
+              onClick={handleNextBox}
+              className="w-14 h-9 sv-btn cursor-pointer rounded-2xl flex items-center justify-center"
+            >
+              <BiSolidRightArrow size={20} />
+            </button>
           </div>
 
-          <div className="bg-transparent p-6 rounded-2xl border-4 border-emerald-800/20 shadow-inner w-full max-w-lg crt-grid">
+          {/* The Grid mapping box positions */}
+          <div className="bg-zinc-950/45 p-6 rounded-2xl border-2 border-indigo-950/30 shadow-inner w-full">
             <div className="flex flex-col gap-3">
               {Array.from({ length: ROWS }).map((_, r) => (
                 <div key={r} className="grid grid-cols-6 gap-3">
                   {Array.from({ length: COLS }).map((_, c) => {
-                    const id = `${currentBoxView}-${r}-${c}`;
+                    const dbBox = activeTab === 'special' ? currentBoxView + 1000 : currentBoxView;
+                    const id = `${dbBox}-${r}-${c}`;
                     const isBlocked = blockedPositions.includes(id);
-                    const isResult = result && result.box === currentBoxView && result.row === r && result.col === c;
+                    const isResult = result && result.tab === activeTab && result.box === currentBoxView && result.row === r && result.col === c;
 
-                    let slotBg = 'bg-slate-800 hover:bg-slate-700 border-slate-600';
-                    if (isBlocked) slotBg = 'bg-rose-600 border-rose-400 hover:bg-rose-500';
-                    if (isResult) slotBg = 'bg-emerald-500 border-emerald-300 animate-pulse ring-4 ring-emerald-400/50';
+                    const isAnimating = animatingPosition && 
+                      animatingPosition.tab === activeTab && 
+                      animatingPosition.box === currentBoxView && 
+                      animatingPosition.row === r && 
+                      animatingPosition.col === c;
+
+                    let cellClass = 'sv-cell aspect-square flex items-center justify-center cursor-pointer select-none';
+                    if (isBlocked) cellClass += ' sv-cell-blocked';
+                    if (isResult) cellClass += ' sv-cell-result';
+                    if (isAnimating) cellClass += ' sv-cell-animating';
 
                     return (
                       <button
@@ -528,10 +877,26 @@ export default function App() {
                         onClick={() => toggleBlockPosition(r, c)}
                         disabled={!!isResult}
                         aria-label={`Fila ${r + 1} Columna ${c + 1}`}
-                        className={`border-2 rounded-xl transition-all duration-150 flex items-center justify-center text-2xl cursor-pointer select-none w-full aspect-square ${slotBg}`}
+                        className={cellClass}
                         title={`Fila ${r + 1}, Columna ${c + 1}`}
                       >
-                        {isResult ? '⭐' : isBlocked ? '❌' : '🥚'}
+                        {/* Display custom Egg Image instead of emoji */}
+                        {isBlocked ? (
+                          <div className="relative flex items-center justify-center">
+                            <img
+                              src="/egg.png"
+                              alt="Blocked Slot"
+                              className="sv-egg-img w-10 h-10 object-contain opacity-20 grayscale"
+                            />
+                            <span className="absolute text-red-500 font-bold text-xs select-none pointer-events-none drop-shadow">❌</span>
+                          </div>
+                        ) : (
+                          <img
+                            src="/egg.png"
+                            alt="Egg Slot"
+                            className={`sv-egg-img w-10 h-10 object-contain ${isResult ? 'w-12 h-12' : ''}`}
+                          />
+                        )}
                       </button>
                     );
                   })}
@@ -539,12 +904,14 @@ export default function App() {
               ))}
             </div>
           </div>
-          <p className="text-xs text-emerald-400 mt-4 text-center">
-            Haz click en cualquier celda para bloquearla/desbloquearla.
-          </p>
-        </div>
 
+          <div className="text-center text-xs text-violet-200/70 font-medium">
+            💡 Haz clic en un huevo para bloquearlo o desbloquearlo de la tirada.
+          </div>
+        </div>
       </main>
+
+
     </div>
   );
 }
