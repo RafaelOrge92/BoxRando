@@ -818,10 +818,10 @@ export default function App() {
         </div>
 
         {/* Center / Right Column: Emulates the SV PC Box grid layout */}
-        <div className="lg:col-span-2 sv-panel p-6 flex flex-col gap-4">
+        <div className={`lg:col-span-2 sv-panel p-6 flex flex-col gap-4 ${activeTab === 'special' ? 'sv-panel-special' : ''}`}>
 
           {/* SV Header navigation style for Boxes */}
-          <div className="flex justify-between items-center bg-zinc-950/20 p-2 rounded-xl border border-white/5">
+          <div className={`flex justify-between items-center bg-zinc-950/20 p-2 rounded-xl border border-white/5 ${activeTab === 'special' ? 'sv-header-special' : ''}`}>
             <button
               onClick={handlePrevBox}
               className="w-14 h-9 sv-btn cursor-pointer rounded-2xl flex items-center justify-center pr-[2px]"
@@ -850,7 +850,7 @@ export default function App() {
           </div>
 
           {/* The Grid mapping box positions */}
-          <div className="bg-zinc-950/45 p-6 rounded-2xl border-2 border-indigo-950/30 shadow-inner w-full">
+          <div className={`bg-zinc-950/45 p-6 rounded-2xl border-2 border-indigo-950/30 shadow-inner w-full ${activeTab === 'special' ? 'sv-grid-special' : ''}`}>
             <div className="flex flex-col gap-3">
               {Array.from({ length: ROWS }).map((_, r) => (
                 <div key={r} className="grid grid-cols-6 gap-3">

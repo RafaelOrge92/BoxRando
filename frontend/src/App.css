@@ -85,6 +85,56 @@ body {
   backdrop-filter: blur(8px);
 }
 
+/* Rainbow Special Theme */
+.sv-panel-special {
+  animation: special-rainbow-shadow 3s linear infinite;
+  border-width: 2px !important;
+}
+
+@keyframes special-rainbow-shadow {
+  0%   { box-shadow: 0 0 30px rgba(255, 0, 0, 0.4), inset 0 0 30px rgba(255, 0, 0, 0.15); border-color: rgba(255, 0, 0, 0.8); }
+  16%  { box-shadow: 0 0 30px rgba(255, 165, 0, 0.4), inset 0 0 30px rgba(255, 165, 0, 0.15); border-color: rgba(255, 165, 0, 0.8); }
+  33%  { box-shadow: 0 0 30px rgba(255, 255, 0, 0.4), inset 0 0 30px rgba(255, 255, 0, 0.15); border-color: rgba(255, 255, 0, 0.8); }
+  50%  { box-shadow: 0 0 30px rgba(0, 255, 0, 0.4), inset 0 0 30px rgba(0, 255, 0, 0.15); border-color: rgba(0, 255, 0, 0.8); }
+  66%  { box-shadow: 0 0 30px rgba(0, 255, 255, 0.4), inset 0 0 30px rgba(0, 255, 255, 0.15); border-color: rgba(0, 255, 255, 0.8); }
+  83%  { box-shadow: 0 0 30px rgba(255, 0, 255, 0.4), inset 0 0 30px rgba(255, 0, 255, 0.15); border-color: rgba(255, 0, 255, 0.8); }
+  100% { box-shadow: 0 0 30px rgba(255, 0, 0, 0.4), inset 0 0 30px rgba(255, 0, 0, 0.15); border-color: rgba(255, 0, 0, 0.8); }
+}
+
+.sv-grid-special {
+  animation: special-rainbow-border 3s linear infinite;
+  border-width: 3px !important;
+}
+
+@keyframes special-rainbow-border {
+  0%   { border-color: rgba(255, 0, 0, 0.8); background-color: rgba(255, 0, 0, 0.15); }
+  16%  { border-color: rgba(255, 165, 0, 0.8); background-color: rgba(255, 165, 0, 0.15); }
+  33%  { border-color: rgba(255, 255, 0, 0.8); background-color: rgba(255, 255, 0, 0.15); }
+  50%  { border-color: rgba(0, 255, 0, 0.8); background-color: rgba(0, 255, 0, 0.15); }
+  66%  { border-color: rgba(0, 255, 255, 0.8); background-color: rgba(0, 255, 255, 0.15); }
+  83%  { border-color: rgba(255, 0, 255, 0.8); background-color: rgba(255, 0, 255, 0.15); }
+  100% { border-color: rgba(255, 0, 0, 0.8); background-color: rgba(255, 0, 0, 0.15); }
+}
+
+.sv-header-special {
+  background: linear-gradient(90deg, 
+    rgba(255, 0, 0, 0.4), 
+    rgba(255, 165, 0, 0.4), 
+    rgba(255, 255, 0, 0.4), 
+    rgba(0, 255, 0, 0.4),
+    rgba(0, 255, 255, 0.4),
+    rgba(255, 0, 255, 0.4),
+    rgba(255, 0, 0, 0.4)
+  ) !important;
+  background-size: 200% 100% !important;
+  animation: header-rainbow-pan 3s linear infinite;
+}
+
+@keyframes header-rainbow-pan {
+  0% { background-position: 0% 50%; }
+  100% { background-position: -200% 50%; }
+}
+
 /* Left Panel Party Slots */
 .sv-party-slot {
   background: var(--sv-slot-bg);
