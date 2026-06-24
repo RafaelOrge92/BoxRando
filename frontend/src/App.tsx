@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
-import { BiSolidLeftArrow, BiSolidRightArrow } from 'react-icons/bi';
+import { BiSolidLeftArrow, BiSolidRightArrow, BiVolumeFull, BiVolumeMute } from 'react-icons/bi';
 import './App.css';
 
 interface SelectedPosition {
@@ -32,6 +32,10 @@ export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const intervalRef = useRef<number | null>(null);
   const timeoutRefs = useRef<number[]>([]);
+
+  // Audio Config
+  const [volume, setVolume] = useState<number>(1);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
 
   // Cajas Especiales state
   const [activeTab, setActiveTab] = useState<'normal' | 'special'>('normal');
@@ -136,6 +140,13 @@ export default function App() {
       }
     };
   }, []);
+
+  // Sync volume with audioRef
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = isMuted ? 0 : volume;
+    }
+  }, [volume, isMuted]);
 
   // Fetch settings (total_boxes) and blocked positions from Supabase
   const loadUserData = async (userId: string) => {
@@ -801,9 +812,31 @@ export default function App() {
             </div>
           </div>
 
-
-
-          {/* Notifications and errors */}
+          {/* Slot 5: Audio Config */}
+          <div className="sv-party-slot p-4 flex flex-col gap-2">
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] font-black text-violet-300 uppercase tracking-widest block">Volumen</span>
+              <button 
+                onClick={() => setIsMuted(!isMuted)}
+                className="text-violet-300 hover:text-white transition-colors cursor-pointer"
+                title={isMuted ? "Desmutear" : "Mutear"}
+              >
+                {isMuted ? <BiVolumeMute size={18} /> : <BiVolumeFull size={18} />}
+              </button>
+            </div>
+            <input 
+              type="range" 
+              min="0" max="1" step="0.01" 
+              value={isMuted ? 0 : volume} 
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setVolume(val);
+                if (isMuted && val > 0) setIsMuted(false);
+                if (!isMuted && val === 0) setIsMuted(true);
+              }}
+              className="w-full accent-violet-500 cursor-pointer"
+            />
+          </div>          {/* Notifications and errors */}
           {error && (
             <div className="p-3 bg-red-950/30 border border-red-500/20 rounded-xl text-center text-red-200 font-bold text-xs">
               ⚠️ {error}
