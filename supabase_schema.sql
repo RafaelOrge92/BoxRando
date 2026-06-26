@@ -9,8 +9,17 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   username TEXT,
   total_boxes INTEGER NOT NULL DEFAULT 1 CHECK (total_boxes >= 1),
+  total_special_boxes INTEGER NOT NULL DEFAULT 1 CHECK (total_special_boxes >= 1),
+  special_box_names JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- =====================================================================
+-- MIGRACIÓN PARA BASES DE DATOS EXISTENTES:
+-- Si ya creaste la tabla profiles, ejecuta estas líneas para añadir las nuevas columnas:
+-- ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS total_special_boxes INTEGER NOT NULL DEFAULT 1 CHECK (total_special_boxes >= 1);
+-- ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS special_box_names JSONB NOT NULL DEFAULT '{}'::jsonb;
+-- =====================================================================
 
 -- 2. Tabla de posiciones bloqueadas
 CREATE TABLE IF NOT EXISTS public.blocked_positions (
@@ -62,14 +71,13 @@ CREATE POLICY "Los usuarios pueden ver su propio historial de tiradas" ON public
 CREATE POLICY "Los usuarios pueden registrar sus propias tiradas" ON public.roll_results
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
--- 8. Trigger para crear automáticamente el perfil tras el registro
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO public.profiles (id, username, updated_at)
   VALUES (
     new.id, 
-    COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)), 
+    COALESCE(new.raw_user_meta_data->>'username', 'πrola'), 
     NOW()
   )
   ON CONFLICT (id) DO NOTHING;
