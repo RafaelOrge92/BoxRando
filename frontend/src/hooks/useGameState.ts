@@ -46,25 +46,7 @@ export function useGameState() {
         setUser(session.user);
         loadUserData(session.user.id);
       } else {
-        // Auto-login con credenciales fijas para desarrollo sin confirmación de correo
-        try {
-          const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
-            email: 'admin@admin.com',
-            password: 'Ad1234'
-          });
-          if (signInErr) {
-            console.warn('Auto-login fallido. Asegúrate de crear el usuario admin@admin.com en tu dashboard de Supabase.');
-            setAuthLoading(false);
-          } else if (signInData?.session) {
-            setUser(signInData.session.user);
-            loadUserData(signInData.session.user.id);
-          } else {
-            setAuthLoading(false);
-          }
-        } catch (err) {
-          console.warn('Error en auto-login:', err);
-          setAuthLoading(false);
-        }
+        setAuthLoading(false);
       }
     });
 
