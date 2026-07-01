@@ -12,6 +12,8 @@ export function useGameState() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [username, setUsername] = useState<string>('');
   const [isEditingUsername, setIsEditingUsername] = useState<boolean>(false);
+  const [profileImageUrl, setProfileImageUrl] = useState<string>('');
+  const [isUserSettingsOpen, setIsUserSettingsOpen] = useState<boolean>(false);
 
   // App state
   const [totalBoxes, setTotalBoxes] = useState<number | ''>(1);
@@ -67,6 +69,10 @@ export function useGameState() {
         setActiveTab('normal');
       }
     });
+
+    // Load local profile image
+    const savedImg = localStorage.getItem('boxrando_profile_img');
+    if (savedImg) setProfileImageUrl(savedImg);
 
     return () => subscription.unsubscribe();
   }, []);
@@ -187,6 +193,25 @@ export function useGameState() {
     }
   };
 
+  const handleUnblockAll = async () => {
+    if (!user) return;
+    setError(null);
+    try {
+      const { error: deleteErr } = await supabase
+        .from('blocked_positions')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (deleteErr) throw deleteErr;
+
+      setBlockedPositions([]);
+      setSuccessMsg('Todas las casillas han sido desbloqueadas');
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: any) {
+      setError('Error al desbloquear casillas: ' + err.message);
+    }
+  };
+
   // Update total boxes in local state and profiles table in database
   const handleTotalBoxesChange = async (val: number | '') => {
     setTotalBoxes(val);
@@ -259,7 +284,6 @@ export function useGameState() {
   const handleUsernameChange = async (newName: string) => {
     const limitedName = newName.slice(0, 9);
     setUsername(limitedName);
-    setIsEditingUsername(false);
     if (user) {
       const { error: updateErr } = await supabase
         .from('profiles')
@@ -269,6 +293,15 @@ export function useGameState() {
       if (updateErr) {
         setError('Error al guardar nickname: ' + updateErr.message);
       }
+    }
+  };
+
+  const handleProfileImageChange = (url: string) => {
+    setProfileImageUrl(url);
+    if (url) {
+      localStorage.setItem('boxrando_profile_img', url);
+    } else {
+      localStorage.removeItem('boxrando_profile_img');
     }
   };
 
@@ -493,6 +526,19 @@ export function useGameState() {
     }
   };
 
+  const handleGoogleAuth = async () => {
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const { error: signInErr } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+      });
+      if (signInErr) throw signInErr;
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const handleExportJSON = () => {
     try {
       const exportData = {
@@ -636,6 +682,9 @@ export function useGameState() {
     setUsername,
     isEditingUsername,
     setIsEditingUsername,
+    profileImageUrl,
+    isUserSettingsOpen,
+    setIsUserSettingsOpen,
     totalBoxes,
     setTotalBoxes,
     currentBoxView,
@@ -662,16 +711,19 @@ export function useGameState() {
     ROWS,
     COLS,
     toggleBlockPosition,
+    handleUnblockAll,
     handleTotalBoxesChange,
     handleTotalSpecialBoxesChange,
     handleSpecialBoxNameChange,
     saveSpecialBoxNamesToDb,
     handleUsernameChange,
+    handleProfileImageChange,
     handleTabChange,
     handleRoll,
     handlePrevBox,
     handleNextBox,
     handleAuth,
+    handleGoogleAuth,
     handleExportJSON,
     handleImportJSON
   };

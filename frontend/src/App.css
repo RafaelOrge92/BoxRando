@@ -55,13 +55,18 @@ body {
 }
 
 /* Top Tab Bar */
+.sv-tab-bar-wrapper {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(10px);
+}
+
 .sv-tab-bar {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding: 0.5rem 2rem 0 2rem;
-  background: rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(10px);
+  max-width: 1126px;
+  margin: 0 auto;
 }
 
 .sv-tab {
@@ -243,11 +248,11 @@ body {
   border-color: rgba(239, 68, 68, 0.2);
 }
 
-/* Yellow and cyan cursor overlay for selected roll results */
 .sv-cell-result {
   background: var(--sv-cell-bg);
-  border: 3px solid var(--sv-accent-yellow) !important;
-  box-shadow: 0 0 15px rgba(244, 208, 63, 0.8), inset 0 0 10px rgba(244, 208, 63, 0.4);
+  border-width: 1px !important;
+  border-color: var(--sv-accent-yellow) !important;
+  box-shadow: inset 0 0 0 2px var(--sv-accent-yellow), 0 0 15px rgba(244, 208, 63, 0.8), inset 0 0 10px rgba(244, 208, 63, 0.4);
   animation: pulse-result 0.5s 3 ease-in-out forwards;
   z-index: 50;
 }
@@ -282,20 +287,22 @@ body {
   0% {
     transform: scale(1);
     background-color: var(--sv-cell-bg);
-    box-shadow: 0 0 15px rgba(244, 208, 63, 0.8), inset 0 0 10px rgba(244, 208, 63, 0.4);
+    border-color: var(--sv-accent-yellow);
+    box-shadow: inset 0 0 0 2px var(--sv-accent-yellow), 0 0 15px rgba(244, 208, 63, 0.8), inset 0 0 10px rgba(244, 208, 63, 0.4);
   }
 
   50% {
     transform: scale(1.15);
     background-color: rgba(244, 208, 63, 0.7);
-    box-shadow: 0 0 40px rgba(244, 208, 63, 1), inset 0 0 30px rgba(244, 208, 63, 1);
     border-color: #ffffff;
+    box-shadow: inset 0 0 0 2px #ffffff, 0 0 40px rgba(244, 208, 63, 1), inset 0 0 30px rgba(244, 208, 63, 1);
   }
 
   100% {
     transform: scale(1);
     background-color: var(--sv-cell-bg);
-    box-shadow: 0 0 15px rgba(244, 208, 63, 0.8), inset 0 0 10px rgba(244, 208, 63, 0.4);
+    border-color: var(--sv-accent-yellow);
+    box-shadow: inset 0 0 0 2px var(--sv-accent-yellow), 0 0 15px rgba(244, 208, 63, 0.8), inset 0 0 10px rgba(244, 208, 63, 0.4);
   }
 }
 
@@ -330,7 +337,6 @@ body {
   border-radius: 9999px;
   /* Pill shape */
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -2px 0 rgba(0, 0, 0, 0.2);
-  transition: all 0.15s ease;
 }
 
 .sv-btn:hover:not(:disabled) {
@@ -397,11 +403,11 @@ body {
   background: var(--sv-btn-dark-hover);
 }
 
-/* Animation for the roulette */
 .sv-cell-animating {
   background-color: var(--sv-cell-bg) !important;
-  box-shadow: inset 0 0 5px rgba(241, 196, 15, 0.4), 0 0 10px rgba(241, 196, 15, 0.6) !important;
-  border: 3px solid #f1c40f !important;
+  border-width: 1px !important;
+  border-color: #f1c40f !important;
+  box-shadow: inset 0 0 0 2px #f1c40f, inset 0 0 5px rgba(241, 196, 15, 0.4), 0 0 10px rgba(241, 196, 15, 0.6) !important;
   animation: roulette-pulse 0.2s infinite alternate;
   z-index: 10;
 }
@@ -427,7 +433,7 @@ body {
   height: 16px;
   width: 16px;
   border-radius: 50%;
-  background: #d8b4fe;
+  background: var(--sv-accent-yellow);
   margin-top: -5px;
   box-shadow: none;
   transition: none;
@@ -435,7 +441,7 @@ body {
 
 .sv-slider::-webkit-slider-thumb:hover,
 .sv-slider::-webkit-slider-thumb:active {
-  background: #d8b4fe;
+  background: #f1c40f;
   transform: none;
 }
 
@@ -450,14 +456,14 @@ body {
   height: 16px;
   width: 16px;
   border-radius: 50%;
-  background: #d8b4fe;
+  background: var(--sv-accent-yellow);
   border: none;
   transition: none;
 }
 
 .sv-slider::-moz-range-thumb:hover,
 .sv-slider::-moz-range-thumb:active {
-  background: #d8b4fe;
+  background: #f1c40f;
 }
 
 @keyframes roulette-pulse {

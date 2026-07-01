@@ -34,11 +34,13 @@ export default function App() {
       {/* Top Console Tabs Header */}
       <TabBar state={gameState} />
 
-      {/* Main Grid & Setup Panel */}
-      <main className="w-full max-w-[95%] 2xl:max-w-[1800px] mx-auto px-4 lg:px-8 py-8 flex-grow grid grid-cols-1 lg:grid-cols-[320px_1fr] xl:grid-cols-[360px_1fr] gap-8 lg:gap-12 items-center z-10">
-        <Sidebar state={gameState} />
-        <GridPanel state={gameState} />
-      </main>
+      <div className="w-full max-w-[1126px] mx-auto flex flex-col flex-grow z-10">
+        {/* Main Grid & Setup Panel */}
+        <main className="w-full px-4 py-8 flex-grow grid grid-cols-1 lg:grid-cols-[320px_1fr] xl:grid-cols-[360px_1fr] gap-8 lg:gap-12 items-center">
+          <Sidebar state={gameState} />
+          <GridPanel state={gameState} />
+        </main>
+      </div>
     </div>
   );
 }

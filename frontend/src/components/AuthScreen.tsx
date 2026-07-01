@@ -1,4 +1,5 @@
 import { BiError, BiCheckCircle } from 'react-icons/bi';
+import { FcGoogle } from 'react-icons/fc';
 import { useGameState } from '../hooks/useGameState';
 
 interface Props {
@@ -9,7 +10,7 @@ export function AuthScreen({ state }: Props) {
   const {
     email, setEmail, password, setPassword,
     isSignUp, setIsSignUp, handleAuth, error, setError,
-    successMsg, setSuccessMsg
+    successMsg, setSuccessMsg, handleGoogleAuth
   } = state;
 
   return (
@@ -57,11 +58,26 @@ export function AuthScreen({ state }: Props) {
 
           <button
             type="submit"
-            className="mt-4 w-full cursor-pointer sv-btn sv-btn-action font-black py-3 px-6 rounded-xl transition duration-200 uppercase tracking-widest text-sm active:scale-98"
+            className="mt-4 w-full cursor-pointer sv-btn sv-btn-action font-black py-3 px-6 rounded-xl uppercase tracking-widest text-sm active:scale-98"
           >
             {isSignUp ? 'Registrar' : 'Acceder'}
           </button>
         </form>
+
+        <div className="relative flex py-5 items-center">
+          <div className="flex-grow border-t border-white/10"></div>
+          <span className="shrink-0 mx-4 text-white/30 text-xs font-bold uppercase tracking-widest">O</span>
+          <div className="flex-grow border-t border-white/10"></div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleGoogleAuth}
+          className="w-full cursor-pointer sv-btn flex items-center justify-center gap-3 font-bold py-3 px-6 rounded-xl text-sm active:scale-98"
+        >
+          <FcGoogle size={22} />
+          <span>Conectar con Google</span>
+        </button>
 
         <div className="mt-6 text-center border-t border-white/10 pt-4">
           <button
