@@ -316,6 +316,7 @@ export function useGameState() {
     if (isRolling) return;
     setError(null);
     setIsRolling(true);
+    setResult(null);
 
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
@@ -324,35 +325,6 @@ export function useGameState() {
 
     let finalResult: SelectedPosition | null = null;
     let finalError: string | null = null;
-    let prevIdToBlock: string | null = null;
-
-    if (result && result.tab === activeTab && user) {
-      const prevDbBox = activeTab === 'special' ? result.box + 1000 : result.box;
-      prevIdToBlock = `${prevDbBox}-${result.row}-${result.col}`;
-
-      if (!blockedPositions.includes(prevIdToBlock)) {
-        const insertPromise = supabase
-          .from('blocked_positions')
-          .insert({
-            user_id: user.id,
-            box: prevDbBox,
-            row: result.row,
-            col: result.col
-          });
-
-        if (activeTab === 'normal') {
-          try {
-            await insertPromise;
-          } catch (e) {
-            console.warn('Error auto-blocking previous roll at 0s:', e);
-          }
-        } else {
-          insertPromise.then(({ error }) => {
-            if (error && error.code !== '23505') console.warn('Error auto-blocking previous roll at 0s:', error.message);
-          });
-        }
-      }
-    }
 
     if (activeTab === 'special') {
       try {
@@ -361,7 +333,7 @@ export function useGameState() {
         for (let r = 0; r < ROWS; r++) {
           for (let c = 0; c < COLS; c++) {
             const id = `${dbBox}-${r}-${c}`;
-            if (!blockedPositions.includes(id) && id !== prevIdToBlock) {
+            if (!blockedPositions.includes(id)) {
               availableCells.push({ row: r, col: c });
             }
           }
@@ -439,7 +411,7 @@ export function useGameState() {
       for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
           const id = `${dbBox}-${r}-${c}`;
-          if (!blockedPositions.includes(id) && id !== prevIdToBlock) {
+          if (!blockedPositions.includes(id)) {
             cells.push({ row: r, col: c });
           }
         }
@@ -471,11 +443,28 @@ export function useGameState() {
 
       if (finalResult) {
         setCurrentBoxView(finalResult.box);
-      }
 
-      if (prevIdToBlock && user) {
-        if (!blockedPositions.includes(prevIdToBlock)) {
-          setBlockedPositions(prev => [...prev, prevIdToBlock!]);
+        const dbBox = finalResult.tab === 'special' ? finalResult.box + 1000 : finalResult.box;
+        const newIdToBlock = `${dbBox}-${finalResult.row}-${finalResult.col}`;
+        
+        if (!blockedPositions.includes(newIdToBlock)) {
+          setBlockedPositions(prev => [...prev, newIdToBlock]);
+          
+          if (user) {
+            supabase
+              .from('blocked_positions')
+              .insert({
+                user_id: user.id,
+                box: dbBox,
+                row: finalResult.row,
+                col: finalResult.col
+              })
+              .then(({ error: insertErr }) => {
+                if (insertErr && insertErr.code !== '23505') {
+                  console.warn('Error auto-blocking result:', insertErr.message);
+                }
+              });
+          }
         }
       }
     }, 4000);

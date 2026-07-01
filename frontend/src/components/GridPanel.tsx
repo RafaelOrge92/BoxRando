@@ -78,7 +78,7 @@ export function GridPanel({ state }: Props) {
                     title={`Fila ${r + 1}, Columna ${c + 1}`}
                   >
                     {/* Display custom Egg Image instead of emoji */}
-                    {isBlocked ? (
+                    {isBlocked && !isResult ? (
                       <div className="relative flex items-center justify-center">
                         <img
                           src="/egg.png"
