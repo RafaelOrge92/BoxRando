@@ -15,7 +15,7 @@ export function TabBar({ state }: Props) {
     isUserSettingsOpen, setIsUserSettingsOpen
   } = state;
 
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

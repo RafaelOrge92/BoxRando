@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { BiSolidUser, BiError, BiCheckCircle, BiSolidSave, BiSolidFolderOpen, BiVolumeMute, BiVolumeFull, BiTrash } from 'react-icons/bi';
-import { supabase } from '../supabaseClient';
+import { BiError, BiCheckCircle, BiSolidSave, BiSolidFolderOpen, BiVolumeMute, BiVolumeFull, BiTrash } from 'react-icons/bi';
 import { useGameState } from '../hooks/useGameState';
 
 interface Props {
@@ -11,7 +10,7 @@ export function Sidebar({ state }: Props) {
   const [showUnblockModal, setShowUnblockModal] = useState(false);
 
   const {
-    username, isEditingUsername, handleUsernameChange, setIsEditingUsername,
+    // username, isEditingUsername and related functions are moved to TabBar
     activeTab, totalSpecialBoxes, totalBoxes, handleTotalSpecialBoxesChange, handleTotalBoxesChange,
     handleRoll, isRolling, result, specialBoxNames,
     handleExportJSON, handleImportJSON,
